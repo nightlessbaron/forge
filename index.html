@@ -2388,7 +2388,7 @@ async function init() {
   });
   pf("#pName", "name"); pf("#gWater", "waterGoal", true); pf("#gSleep", "sleepGoal", true);
   pf("#gKcal", "kcalGoal", true); pf("#gPro", "proGoal", true); pf("#gSteps", "stepGoal", true); pf("#gDays", "sessionsGoal", true);
-  $("#pUnit").onchange = e => { DB.profile.units = e.target.value; save(); render(); toast("Units switched to " + (e.target.value === "kg" ? "kilograms" : "pounds")); };
+  $("#pUnit").onchange = e => { DB.profile.units = e.target.value; save(true); render(); toast("Units switched to " + (e.target.value === "kg" ? "kilograms" : "pounds")); };
 
   bindLog();
   initSearch();
