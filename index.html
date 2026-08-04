@@ -1278,13 +1278,14 @@ function renderSets() {
     g.items.forEach((it, k) => {
       const line = el("div", "setline");
       line.appendChild(el("div", "n", String(k + 1)));
-      const iw = el("input"); iw.type = "number"; iw.step = "0.5"; iw.inputMode = "decimal"; iw.value = it.s.w ?? ""; iw.placeholder = cardio ? "min" : uLabel();
+      const iw = el("input"); iw.type = "number"; iw.step = "0.5"; iw.inputMode = "decimal"; iw.value = it.s.w == null ? "" : (cardio ? it.s.w : round(toDisp(it.s.w), 1)); iw.placeholder = cardio ? "min" : uLabel();
       const ir = el("input"); ir.type = "number"; ir.step = "1"; ir.inputMode = "numeric"; ir.value = it.s.r ?? ""; ir.placeholder = cardio ? "km" : "reps";
       const ip = el("input"); ip.type = "number"; ip.step = "0.5"; ip.min = "1"; ip.max = "10"; ip.inputMode = "decimal"; ip.value = it.s.rpe ?? ""; ip.placeholder = "—";
       [["w", iw], ["r", ir], ["rpe", ip]].forEach(([field, input]) => {
         input.addEventListener("input", () => {
           const rec2 = day(CUR, true);
-          rec2.workout.sets[it.i][field] = input.value === "" ? null : num(input.value);
+          const v = input.value === "" ? null : num(input.value);
+          rec2.workout.sets[it.i][field] = (field === "w" && !cardio && v != null) ? round(fromDisp(v), 3) : v;
           save(); updateVolPill();
         });
       });
