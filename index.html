@@ -653,13 +653,18 @@ async function syncPull() {
   /* Only now is pushing safe: a failed pull must never overwrite the
      server with whatever this browser happened to have (often nothing). */
   SYNC_OK = true;
-  if (p && p.days) {
+  const remote = p && p.days ? Object.keys(p.days).length : -1;
+  const local = Object.keys(DB.days).length;
+  /* An empty server must never replace a non-empty device copy, or connecting
+     a fresh browser first would upload nothing and then wipe the real log on
+     the browser that actually had it. Empty always loses to non-empty. */
+  if (remote > 0 || (remote === 0 && local === 0)) {
     DB = Object.assign(DEFAULTS(), p, { profile: Object.assign(DEFAULTS().profile, p.profile || {}) });
     Store.set(KEY, JSON.stringify(DB));
     syncStat(`Synced — ${Object.keys(DB.days).length} days loaded.`);
     render();
   } else {
-    syncStat("Sync was empty — uploading this device's log.");
+    syncStat(local ? `Sync was empty — uploaded this browser's ${local} days.` : "Sync is empty — nothing logged yet.");
     syncPush(true);
   }
 }

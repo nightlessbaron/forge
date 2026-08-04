@@ -5,4 +5,4 @@ compatibility_date = "2026-01-01"
 # `npx wrangler kv namespace create FORGE` prints an id — paste it below.
 [[kv_namespaces]]
 binding = "FORGE"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "176d6c6ebd194667a23ce6ab73dae8ad"
