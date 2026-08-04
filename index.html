@@ -475,16 +475,6 @@ svg{display:block;max-width:100%}
           <input type="file" id="fileIn" accept="application/json,.json" hidden>
         </div>
         <div class="hint" id="storeStat" style="margin-top:10px"></div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--grid)">
-          <label class="f" for="syncUrl">Sync across browsers (optional)</label>
-          <input type="url" id="syncUrl" placeholder="https://forge-sync.you.workers.dev" autocomplete="off">
-          <input type="password" id="syncPass" placeholder="Password" autocomplete="current-password" style="margin-top:8px">
-          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:9px">
-            <button class="btn pri" id="btnSync">Connect &amp; load</button>
-            <button class="btn" id="btnSyncOff">Disconnect</button>
-          </div>
-          <div class="hint" id="syncStat" style="margin-top:8px"></div>
-        </div>
         <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--grid)">
           <button class="btn" id="btnDemo">Load 90 days of sample data</button>
           <button class="btn dngr" id="btnWipe">Erase everything</button>
@@ -505,6 +495,22 @@ svg{display:block;max-width:100%}
           <div><label class="f" for="gDays">Sessions / week</label><input type="number" id="gDays" min="1" max="7" step="1" inputmode="numeric"></div>
         </div>
       </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="hd"><div class="t"><h3>Sync across browsers</h3><p>Enter your password to load this log in any browser, including incognito</p></div></div>
+    <div class="bd">
+      <div class="row" style="grid-template-columns:1fr">
+        <div>
+          <label class="f" for="syncPass">Sync password</label>
+          <input type="password" id="syncPass" placeholder="Your sync password" autocomplete="current-password">
+        </div>
+      </div>
+      <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn pri" id="btnSync">Connect &amp; load</button>
+        <button class="btn" id="btnSyncOff">Disconnect</button>
+      </div>
+      <div class="hint" id="syncStat" style="margin-top:10px"></div>
     </div>
   </div>
   <div class="sechd"><h2>All logged days</h2><p>The complete record — every value in the charts is here in plain text</p></div>
@@ -637,14 +643,20 @@ function save(now) {
    ponytail: last write wins. Logging from two browsers within the same
    minute loses one of them — add per-day merge only if that ever happens. */
 const SKEY = "forge.sync";
+const SYNC_URL = "https://forge-sync.forge-varad.workers.dev";
+/* SYNC is the password, or null when this browser is not syncing. */
 let SYNC = null, SYNC_OK = false, pushTimer = null;
 function syncStat(m) { const e = $("#syncStat"); if (e) e.textContent = m; }
-function loadSync() { try { SYNC = JSON.parse(Store.get(SKEY) || "null"); } catch (e) { SYNC = null; } }
+function loadSync() {
+  /* older builds stored {url, pass}; accept both */
+  try { const o = JSON.parse(Store.get(SKEY) || "null"); SYNC = typeof o === "string" ? o : (o && o.pass) || null; }
+  catch (e) { SYNC = null; }
+}
 async function syncPull() {
   if (!SYNC || SHARED) return;
   syncStat("Connecting…");
   let r;
-  try { r = await fetch(SYNC.url, { headers: { "x-forge-pass": SYNC.pass }, cache: "no-store" }); }
+  try { r = await fetch(SYNC_URL, { headers: { "x-forge-pass": SYNC }, cache: "no-store" }); }
   catch (e) { SYNC_OK = false; syncStat("Can't reach sync — using this device's copy."); return; }
   if (r.status === 401) { SYNC_OK = false; syncStat("Wrong password — not syncing."); return; }
   if (!r.ok) { SYNC_OK = false; syncStat(`Sync error ${r.status} — using this device's copy.`); return; }
@@ -673,7 +685,7 @@ function syncPush(now) {
   clearTimeout(pushTimer);
   const go = async () => {
     try {
-      const r = await fetch(SYNC.url, { method: "PUT", headers: { "x-forge-pass": SYNC.pass, "content-type": "application/json" }, body: JSON.stringify(DB) });
+      const r = await fetch(SYNC_URL, { method: "PUT", headers: { "x-forge-pass": SYNC, "content-type": "application/json" }, body: JSON.stringify(DB) });
       syncStat(r.ok ? "Synced." : `Sync failed (${r.status}) — saved on this device.`);
     } catch (e) { syncStat("Can't reach sync — saved on this device."); }
   };
@@ -2168,8 +2180,8 @@ function observations(D, P) {
 function renderData() {
   const P = DB.profile;
   $("#pName").value = P.name || ""; $("#pUnit").value = P.units;
-  $("#syncUrl").value = SYNC ? SYNC.url : ""; $("#syncPass").value = SYNC ? SYNC.pass : "";
-  if (!SYNC) syncStat("Not syncing — this browser only. Add a worker URL to see this log in any browser.");
+  $("#syncPass").value = SYNC || "";
+  if (!SYNC) syncStat("Not syncing — this browser only. Enter your password to load the log here.");
   $("#gWater").value = P.waterGoal; $("#gSleep").value = P.sleepGoal;
   $("#gKcal").value = P.kcalGoal; $("#gPro").value = P.proGoal;
   $("#gSteps").value = P.stepGoal; $("#gDays").value = P.sessionsGoal;
@@ -2439,14 +2451,15 @@ async function init() {
   $("#fileIn").onchange = e => { if (e.target.files[0]) doImport(e.target.files[0]); e.target.value = ""; };
   $("#btnDemo").onclick = loadDemo;
   $("#btnSync").onclick = () => {
-    const url = $("#syncUrl").value.trim().replace(/\/+$/, ""), pass = $("#syncPass").value;
-    if (!url || !pass) { toast("Enter the worker URL and the password"); return; }
-    SYNC = { url, pass }; SYNC_OK = false; Store.set(SKEY, JSON.stringify(SYNC));
+    const pass = $("#syncPass").value;
+    if (!pass) { toast("Enter your sync password"); return; }
+    SYNC = pass; SYNC_OK = false; Store.set(SKEY, JSON.stringify(SYNC));
     syncPull();
   };
+  $("#syncPass").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnSync").click(); });
   $("#btnSyncOff").onclick = () => {
     SYNC = null; SYNC_OK = false; Store.del(SKEY);
-    $("#syncUrl").value = ""; $("#syncPass").value = "";
+    $("#syncPass").value = "";
     syncStat("Not syncing — this browser only."); toast("Sync disconnected");
   };
   $("#btnWipe").onclick = () => {

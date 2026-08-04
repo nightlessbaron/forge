@@ -70,9 +70,14 @@ npx wrangler secret put FORGE_PASSWORD   # type the password you want
 npx wrangler deploy                      # prints your worker URL
 ```
 
-Then in the app: **Data tab → Sync across browsers** → paste the worker URL and
-password → *Connect & load*. Repeat that once in any other browser and it shows
-the same log. The browser remembers it, so it is once per browser, not per visit.
+The deploy prints your worker URL. Put it in `SYNC_URL` near the top of the
+sync section in `index.html` so the app knows where to look — it is already set
+to this repo's worker.
+
+Then in the app: **Data tab → Sync across browsers** (its own card, below Goals
+& profile) → type your password → *Connect & load*. Repeat that once in any
+other browser and it shows the same log. The browser remembers the password, so
+it is once per browser, not per visit.
 
 How it behaves:
 
