@@ -475,6 +475,16 @@ svg{display:block;max-width:100%}
           <input type="file" id="fileIn" accept="application/json,.json" hidden>
         </div>
         <div class="hint" id="storeStat" style="margin-top:10px"></div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--grid)">
+          <label class="f" for="syncUrl">Sync across browsers (optional)</label>
+          <input type="url" id="syncUrl" placeholder="https://forge-sync.you.workers.dev" autocomplete="off">
+          <input type="password" id="syncPass" placeholder="Password" autocomplete="current-password" style="margin-top:8px">
+          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:9px">
+            <button class="btn pri" id="btnSync">Connect &amp; load</button>
+            <button class="btn" id="btnSyncOff">Disconnect</button>
+          </div>
+          <div class="hint" id="syncStat" style="margin-top:8px"></div>
+        </div>
         <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--grid)">
           <button class="btn" id="btnDemo">Load 90 days of sample data</button>
           <button class="btn dngr" id="btnWipe">Erase everything</button>
@@ -616,8 +626,53 @@ let saveTimer = null;
 function save(now) {
   if (SHARED) return;
   clearTimeout(saveTimer);
-  const go = () => { Store.set(KEY, JSON.stringify(DB)); updateStoreStat(); };
+  const go = () => { Store.set(KEY, JSON.stringify(DB)); updateStoreStat(); syncPush(); };
   now ? go() : (saveTimer = setTimeout(go, 250));
+}
+
+/* ------------------------ sync (optional) ------------------------- */
+/* A Cloudflare Worker holds one log behind one password (sync/worker.js).
+   The device copy stays the working copy, so the app never blocks on the
+   network; the worker is just the shared copy every browser starts from.
+   ponytail: last write wins. Logging from two browsers within the same
+   minute loses one of them — add per-day merge only if that ever happens. */
+const SKEY = "forge.sync";
+let SYNC = null, SYNC_OK = false, pushTimer = null;
+function syncStat(m) { const e = $("#syncStat"); if (e) e.textContent = m; }
+function loadSync() { try { SYNC = JSON.parse(Store.get(SKEY) || "null"); } catch (e) { SYNC = null; } }
+async function syncPull() {
+  if (!SYNC || SHARED) return;
+  syncStat("Connecting…");
+  let r;
+  try { r = await fetch(SYNC.url, { headers: { "x-forge-pass": SYNC.pass }, cache: "no-store" }); }
+  catch (e) { SYNC_OK = false; syncStat("Can't reach sync — using this device's copy."); return; }
+  if (r.status === 401) { SYNC_OK = false; syncStat("Wrong password — not syncing."); return; }
+  if (!r.ok) { SYNC_OK = false; syncStat(`Sync error ${r.status} — using this device's copy.`); return; }
+  let p = null;
+  try { p = await r.json(); } catch (e) { }
+  /* Only now is pushing safe: a failed pull must never overwrite the
+     server with whatever this browser happened to have (often nothing). */
+  SYNC_OK = true;
+  if (p && p.days) {
+    DB = Object.assign(DEFAULTS(), p, { profile: Object.assign(DEFAULTS().profile, p.profile || {}) });
+    Store.set(KEY, JSON.stringify(DB));
+    syncStat(`Synced — ${Object.keys(DB.days).length} days loaded.`);
+    render();
+  } else {
+    syncStat("Sync was empty — uploading this device's log.");
+    syncPush(true);
+  }
+}
+function syncPush(now) {
+  if (!SYNC || !SYNC_OK || SHARED) return;
+  clearTimeout(pushTimer);
+  const go = async () => {
+    try {
+      const r = await fetch(SYNC.url, { method: "PUT", headers: { "x-forge-pass": SYNC.pass, "content-type": "application/json" }, body: JSON.stringify(DB) });
+      syncStat(r.ok ? "Synced." : `Sync failed (${r.status}) — saved on this device.`);
+    } catch (e) { syncStat("Can't reach sync — saved on this device."); }
+  };
+  now ? go() : (pushTimer = setTimeout(go, 1200));
 }
 
 /* a day record, created lazily */
@@ -2108,6 +2163,8 @@ function observations(D, P) {
 function renderData() {
   const P = DB.profile;
   $("#pName").value = P.name || ""; $("#pUnit").value = P.units;
+  $("#syncUrl").value = SYNC ? SYNC.url : ""; $("#syncPass").value = SYNC ? SYNC.pass : "";
+  if (!SYNC) syncStat("Not syncing — this browser only. Add a worker URL to see this log in any browser.");
   $("#gWater").value = P.waterGoal; $("#gSleep").value = P.sleepGoal;
   $("#gKcal").value = P.kcalGoal; $("#gPro").value = P.proGoal;
   $("#gSteps").value = P.stepGoal; $("#gDays").value = P.sessionsGoal;
@@ -2359,7 +2416,7 @@ async function init() {
   }
   /* ponytail: ask the browser to exempt this origin from storage eviction.
      One native call — an IndexedDB rewrite would not survive eviction either. */
-  if (!SHARED) { load(); navigator.storage?.persist?.(); }
+  if (!SHARED) { load(); loadSync(); navigator.storage?.persist?.(); }
   setTheme(Store.get("forge.theme") || "dark");
   $("#dPick").value = CUR;
   $("#dLabel").firstChild.nodeValue = fmtDay(CUR);
@@ -2376,6 +2433,17 @@ async function init() {
   $("#btnImport").onclick = () => $("#fileIn").click();
   $("#fileIn").onchange = e => { if (e.target.files[0]) doImport(e.target.files[0]); e.target.value = ""; };
   $("#btnDemo").onclick = loadDemo;
+  $("#btnSync").onclick = () => {
+    const url = $("#syncUrl").value.trim().replace(/\/+$/, ""), pass = $("#syncPass").value;
+    if (!url || !pass) { toast("Enter the worker URL and the password"); return; }
+    SYNC = { url, pass }; SYNC_OK = false; Store.set(SKEY, JSON.stringify(SYNC));
+    syncPull();
+  };
+  $("#btnSyncOff").onclick = () => {
+    SYNC = null; SYNC_OK = false; Store.del(SKEY);
+    $("#syncUrl").value = ""; $("#syncPass").value = "";
+    syncStat("Not syncing — this browser only."); toast("Sync disconnected");
+  };
   $("#btnWipe").onclick = () => {
     if (!confirm("Erase every logged day and reset your goals? Export a backup first if you might want this data.")) return;
     DB = DEFAULTS(); Store.del(KEY); save(true); LIFT_EX = null; render(); toast("All data erased");
@@ -2430,6 +2498,7 @@ async function init() {
   window.addEventListener("beforeunload", () => save(true));
   if (SHARED) applySharedMode();
   render();
+  if (SYNC) syncPull();
   if (!Object.keys(DB.days).length) setTimeout(() => {
     if (!Object.keys(DB.days).length) toast("New here? Load sample data from the Data tab to see it full.");
   }, 1400);

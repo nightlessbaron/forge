@@ -4,7 +4,7 @@ A single-file, offline-first tracker for lifting, hydration, sleep, nutrition,
 recovery and body composition. No build step, no dependencies, no server, no
 account. The whole app is `index.html`.
 
-**Live:** https://YOUR-USERNAME.github.io/forge/
+**Live:** https://nightlessbaron.github.io/forge/
 
 ---
 
@@ -54,6 +54,38 @@ scoped to the address you load the app from. Consequences worth understanding:
 
 If a browser blocks storage entirely, the app says so on the Data tab and keeps
 working in memory for that session — export before closing the tab.
+
+## Syncing across browsers
+
+By default the log lives only in the browser you typed it into — a different
+browser, or an incognito window, starts empty. To see the same log everywhere,
+put it behind a password-protected Cloudflare Worker (free tier, no card).
+
+One-time setup, from the `sync/` folder:
+
+```bash
+npx wrangler login
+npx wrangler kv namespace create FORGE   # paste the printed id into wrangler.toml
+npx wrangler secret put FORGE_PASSWORD   # type the password you want
+npx wrangler deploy                      # prints your worker URL
+```
+
+Then in the app: **Data tab → Sync across browsers** → paste the worker URL and
+password → *Connect & load*. Repeat that once in any other browser and it shows
+the same log. The browser remembers it, so it is once per browser, not per visit.
+
+How it behaves:
+
+- The device copy stays the working copy, so the app never blocks on the network
+  and keeps working offline. The worker is the shared copy each browser starts from.
+- **Last write wins.** Logging from two browsers within the same minute loses one
+  of them. You are one person — don't log from two at once and it never comes up.
+- A failed or unauthorised connection **never** uploads. A fresh browser that
+  can't reach the worker cannot overwrite the server with its empty log.
+- Leave sync unconfigured and the app makes no network requests at all.
+
+Your data is then in your own Cloudflare account rather than only your browser,
+readable by anyone holding the URL and password. Treat the password like one.
 
 ## Install on your phone
 
