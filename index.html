@@ -361,7 +361,7 @@ svg{display:block;max-width:100%}
       <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="btnRest">Rest day (no training)</button>
         <button class="btn" id="btnCopyLast">Repeat last session</button>
-        <div class="pill" id="wkVol" style="margin-left:auto">0 kg volume</div>
+        <div class="pill" id="wkVol" style="margin-left:auto">0 sets</div>
       </div>
     </div>
   </div>
@@ -396,7 +396,7 @@ svg{display:block;max-width:100%}
     <div class="card">
       <div class="hd"><div class="t"><h3>Body</h3><p>Weight daily · tape weekly</p></div></div>
       <div class="bd">
-        <div><label class="f" for="bWeight">Body weight (<span class="unit">kg</span>)</label><input type="number" id="bWeight" step="0.1" min="0" inputmode="decimal"></div>
+        <div><label class="f" for="bWeight">Body weight (<span class="unit">lb</span>)</label><input type="number" id="bWeight" step="0.1" min="0" inputmode="decimal"></div>
         <div class="row" style="grid-template-columns:1fr 1fr;margin-top:10px">
           <div><label class="f" for="mWaist">Waist (cm)</label><input type="number" id="mWaist" step="0.5" inputmode="decimal"></div>
           <div><label class="f" for="mChest">Chest (cm)</label><input type="number" id="mChest" step="0.5" inputmode="decimal"></div>
@@ -524,12 +524,13 @@ const Store = (() => {
     del(k) { try { ok ? localStorage.removeItem(k) : delete mem[k]; } catch (e) { delete mem[k]; } }
   };
 })();
-const KEY = "forge.v1";
+const KEY = "forge.v2";
+const OLD_KEY = "forge.v1";
 
 /* ---------------------------- model ------------------------------ */
 const DEFAULTS = () => ({
-  version: 1,
-  profile: { name: "", units: "kg", waterGoal: 3000, sleepGoal: 7.5, kcalGoal: 2400, proGoal: 160, stepGoal: 8000, sessionsGoal: 4 },
+  version: 2,
+  profile: { name: "", units: "lb", waterGoal: 3000, sleepGoal: 7.5, kcalGoal: 2400, proGoal: 160, stepGoal: 8000, sessionsGoal: 4 },
   days: {}
 });
 let DB = DEFAULTS();
@@ -577,13 +578,35 @@ function buildSnap(dates) {
   };
 }
 
+/* v1 stored weights in kg, but the set-weight input never ran fromDisp(), so
+   numbers read off a lb scale were saved as though they were kg. Migrate once:
+   reinterpret non-cardio set weights as lb and store the true kg. Cardio "w" is
+   minutes, and body weight already converted correctly in v1 — both left alone. */
+function migrateV1(raw) {
+  const p = JSON.parse(raw);
+  Object.keys(p.days || {}).forEach(d => {
+    const sets = p.days[d].workout && p.days[d].workout.sets;
+    if (Array.isArray(sets)) sets.forEach(s => {
+      if (s.w != null && !isCardio(s.ex)) s.w = round(s.w / KG, 3);
+    });
+  });
+  p.profile = Object.assign(p.profile || {}, { units: "lb" });
+  return p;
+}
 function load() {
   const raw = Store.get(KEY);
-  if (!raw) return;
+  let p = null, migrated = false;
   try {
-    const p = JSON.parse(raw);
-    if (p && typeof p === "object" && p.days) DB = Object.assign(DEFAULTS(), p, { profile: Object.assign(DEFAULTS().profile, p.profile || {}) });
-  } catch (e) { console.warn("Could not read saved data", e); }
+    if (raw) p = JSON.parse(raw);
+    else {
+      const old = Store.get(OLD_KEY);
+      if (old) { p = migrateV1(old); migrated = true; }
+    }
+  } catch (e) { console.warn("Could not read saved data", e); return; }
+  if (p && typeof p === "object" && p.days) {
+    DB = Object.assign(DEFAULTS(), p, { profile: Object.assign(DEFAULTS().profile, p.profile || {}) });
+    if (migrated) { save(true); Store.del(OLD_KEY); }
+  }
 }
 /* SHARED is set when the page opened from a #r=… snapshot link. In that mode
    the app is a read-only viewer: nothing is read from or written to storage,

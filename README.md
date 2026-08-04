@@ -41,7 +41,7 @@ git add . && git commit -m "Update" && git push
 
 ## Where your data lives
 
-Everything is stored in your browser's `localStorage`, under the key `forge.v1`,
+Everything is stored in your browser's `localStorage`, under the key `forge.v2`,
 scoped to the address you load the app from. Consequences worth understanding:
 
 - Data logged at `https://you.github.io/forge/` is **separate** from data logged
@@ -133,4 +133,5 @@ Vanilla HTML, CSS and JavaScript in one file. Charts are hand-rolled SVG — no
 charting library — with crosshair tooltips, a table-view twin for every chart,
 and a colour palette validated for colour-blind separation in both light and
 dark themes. Weights are stored internally in kilograms and converted for
-display, so switching units never loses precision.
+display, so switching units never loses precision. The display default is
+pounds; switch it on the Data tab.
