@@ -2334,7 +2334,9 @@ async function init() {
       alert("This share link could not be read — it was probably shortened or cut off in transit. Ask for a fresh one.");
     }
   }
-  if (!SHARED) load();
+  /* ponytail: ask the browser to exempt this origin from storage eviction.
+     One native call — an IndexedDB rewrite would not survive eviction either. */
+  if (!SHARED) { load(); navigator.storage?.persist?.(); }
   setTheme(Store.get("forge.theme") || "dark");
   $("#dPick").value = CUR;
   $("#dLabel").firstChild.nodeValue = fmtDay(CUR);
