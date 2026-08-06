@@ -768,7 +768,8 @@ const LIB = [
   ["Overhead press", "Shoulders"], ["Seated dumbbell press", "Shoulders"], ["Arnold press", "Shoulders"],
   ["Lateral raise", "Shoulders"], ["Cable lateral raise", "Shoulders"], ["Rear delt fly", "Shoulders"],
   ["Upright row", "Shoulders"], ["Landmine press", "Shoulders"],
-  ["Back squat", "Quads"], ["Front squat", "Quads"], ["Hack squat", "Quads"], ["Leg press", "Quads"],
+  ["Back squat", "Quads", "barbell squat"], ["Front squat", "Quads", "barbell front squat"],
+  ["Hack squat", "Quads"], ["Leg press", "Quads"],
   ["Bulgarian split squat", "Quads"], ["Walking lunge", "Quads"], ["Goblet squat", "Quads"],
   ["Leg extension", "Quads"], ["Step-up", "Quads"], ["Sissy squat", "Quads"],
   ["Leg curl", "Hamstrings"], ["Seated leg curl", "Hamstrings"], ["Nordic curl", "Hamstrings"],
@@ -786,9 +787,24 @@ const LIB = [
   ["Snatch", "Full body"], ["Kettlebell swing", "Full body"], ["Thruster", "Full body"], ["Burpee", "Full body"],
   ["Treadmill run", "Cardio"], ["Outdoor run", "Cardio"], ["Cycling", "Cardio"], ["Rowing machine", "Cardio"],
   ["Stair climber", "Cardio"], ["Elliptical", "Cardio"], ["Incline walk", "Cardio"], ["Swimming", "Cardio"], ["Jump rope", "Cardio"]
-].map(([name, muscle]) => ({ name, muscle }));
+  /* Third field is optional: extra words the search should match, for lifts
+     people call by a different name than the one stored. Never a second entry —
+     two names for one lift would split its history across two charts. */
+].map(([name, muscle, alt]) => ({ name, muscle, alt: alt || "" }));
 
 const isCardio = ex => (LIB.find(l => l.name.toLowerCase() === ex.toLowerCase()) || {}).muscle === "Cardio";
+
+/* An empty Olympic bar is 45 lb / 20 kg, so these lifts start at the bar
+   instead of 0 and the number you type is the real load on your back.
+   ponytail: an explicit list, because the names give no reliable tell —
+   "Goblet squat" and "Hack squat" are not barbell moves. */
+const BARBELL = new Set([
+  "Back squat", "Front squat", "Barbell bench press", "Incline barbell bench press",
+  "Decline bench press", "Close-grip bench press", "Overhead press", "Deadlift", "Romanian deadlift",
+  "Stiff-leg deadlift", "Rack pull", "Good morning", "Barbell row", "Pendlay row", "Upright row",
+  "Shrug", "Barbell curl", "Hip thrust", "Clean and press", "Power clean", "Snatch", "Thruster",
+].map(n => n.toLowerCase()));
+const barWeight = () => fromDisp(DB.profile.units === "lb" ? 45 : 20);
 function muscleOf(name) {
   const hit = LIB.find(l => l.name.toLowerCase() === String(name).toLowerCase());
   return hit ? hit.muscle : "Other";
@@ -1434,9 +1450,14 @@ function addExercise(name) {
     const pd = prev.d, ss = setsOf(pd).filter(s => s.ex === name);
     if (ss.length) { w = ss[0].w ?? null; r = ss[0].r ?? null; }
   }
+  /* No history yet? Start a barbell lift at the empty bar, not at 0. */
+  const bar = w == null && BARBELL.has(name.toLowerCase());
+  if (bar) w = round(barWeight(), 3);
   wk.sets.push({ ex: name, w, r, rpe: null });
   save(); renderSets();
-  toast(prev ? `${name} added — last session's numbers pre-filled` : `${name} added`);
+  toast(prev ? `${name} added — last session's numbers pre-filled`
+    : bar ? `${name} added — starting at the bar (${round(toDisp(w), 1)} ${uLabel()})`
+    : `${name} added`);
 }
 
 /* ------------------------- exercise search ------------------------- */
@@ -1461,8 +1482,8 @@ function initSearch() {
     const starts = [], has = [];
     LIB.forEach(o => {
       const n = o.name.toLowerCase();
-      if (n.startsWith(q)) starts.push(o);
-      else if (n.includes(q) || o.muscle.toLowerCase().startsWith(q)) has.push(o);
+      if (n.startsWith(q) || o.alt.startsWith(q)) starts.push(o);
+      else if (n.includes(q) || o.alt.includes(q) || o.muscle.toLowerCase().startsWith(q)) has.push(o);
     });
     return starts.concat(has).slice(0, 10);
   };
